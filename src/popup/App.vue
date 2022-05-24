@@ -58,6 +58,7 @@
               <md-table-head>Description</md-table-head>
               <md-table-head>Date</md-table-head>
               <md-table-head>Duration</md-table-head>
+              <md-table-head v-if="allowEditingDuration">Amended</md-table-head>
               <md-table-head>Logged</md-table-head>
             </md-table-row>
 
@@ -69,14 +70,20 @@
               <md-table-cell class="no-wrap">
                 <a v-if="log.issue != 'NO ID'" :href="jiraUrl + '/browse/' + log.issue" target="_blank">{{ log.issue }}</a><a v-else>{{ log.issue }}</a>
               </md-table-cell>
-              <md-table-cell>{{ log.description }}</md-table-cell>
+              <md-table-cell v-if="!allowEditingDescription">{{ log.originalDescription }}</md-table-cell>
+              <md-table-cell v-if="allowEditingDescription">
+                <textarea v-model="log.description" placeholder="Description" style="contain: content;"></textarea>
+              </md-table-cell>
               <md-table-cell class="no-wrap">
                 {{
                   $moment(log.start).format("l")
                 }}
               </md-table-cell>
               <md-table-cell class="no-wrap" :class="log.duration > 60 ? 'timeBlack' : 'timeRed'">
-                {{ formatDuration(log.duration) }}
+                {{ formatDuration(log.originalDuration) }}
+              </md-table-cell>
+              <md-table-cell v-if="allowEditingDuration" class="no-wrap">
+                <duration-input v-model="log.duration" placeholder="Amended duration" style="width: 60px"/>
               </md-table-cell>
               <md-table-cell class="no-wrap">
                 <md-icon v-show="log.isSynced" class="md-accent">check_circle</md-icon>
@@ -95,8 +102,14 @@
               </md-table-cell>
               <md-table-cell class="no-wrap">
                 <div class="tooltip">
-                  <n>{{ totalDuration() }}</n>
+                  <i>{{ totalDuration(false, true) }}</i>
                   <span class="tooltiptext">Time in Toggl</span>
+                </div>
+              </md-table-cell>
+              <md-table-cell v-if="allowEditingDuration" class="no-wrap">
+                <div class="tooltip">
+                  <i>{{ totalDuration(false, false) }}</i>
+                  <span class="tooltiptext">Amended Time</span>
                 </div>
               </md-table-cell>
               <md-table-cell class="no-wrap" />
@@ -154,6 +167,9 @@ export default {
       blockFetch: false,
       weekdayMonday: true,
       saveDates: false,
+      allowEditingDescription: false,
+      allowEditingDuration: false,
+      totalAmendedDuration: '',
       theme: ''
     };
   },
@@ -188,7 +204,9 @@ export default {
         weekdayMonday: false,
         startDate: initalStartDate,
         endDate: initalEndDate,
-        saveDates: false
+        saveDates: false,
+        allowEditingDescription: false,
+        allowEditingDuration: false,
       })
       .then((setting) => {
         _self.jiraUrl = setting.jiraUrl;
@@ -208,6 +226,8 @@ export default {
           _self.startDate = setting.startDate;
           _self.endDate = setting.endDate;
         }
+        _self.allowEditingDescription = setting.allowEditingDescription;
+        _self.allowEditingDuration = setting.allowEditingDuration;
         _self.$material.locale.firstDayOfAWeek = _self.weekdayMonday;
       });
   },
@@ -220,18 +240,22 @@ export default {
       this.logs = [];
       this.fetchEntries();
     },
-    processJiraDescription (description) {
+    processJiraDescription (description, issue) {
       const _self = this;
+      let newDescription = _self.worklogWihtoutDescription
+          ? description.replace(issue, '').trim()
+          : description
+
       if (_self.worklogDescriptionSplit && _self.stringSplit) {
-        if (description.includes(_self.stringSplit)) {
-          return description
+        if (newDescription.includes(_self.stringSplit)) {
+          return newDescription
             .split(_self.stringSplit)
             .slice(1)
             .join(_self.stringSplit);
         }
       }
 
-      return description;
+      return newDescription;
     },
     async syncToJira () {
       const _self = this;
@@ -249,11 +273,7 @@ export default {
             _self.jiraUrl + '/rest/api/latest/issue/' + log.issue + '/worklog',
           data: {
             timeSpentSeconds: log.duration,
-            comment: _self.processJiraDescription(
-              _self.worklogWihtoutDescription
-                ? log.description.replace(log.issue, '')
-                : log.description
-            ),
+            comment: log.description,
             started: _self.toJiraDateTime(log.start)
           },
           headers: headers
@@ -359,7 +379,7 @@ export default {
       let _self = this;
       return new Promise(function (resolve, reject) {
         if (_self.jiraIssueInDescription && log.description != null) {
-          const parsedIssue = _self.matchIssueId(log.description);
+          const parsedIssue = _self.matchIssueId(log.description.trim());
           if (parsedIssue) {
             resolve(parsedIssue[0]);
           }
@@ -431,6 +451,9 @@ export default {
                 logObject.isSynced = false;
                 logObject.issue = issueName;
                 logObject.checked = '';
+                logObject.originalDescription = logObject.description;
+                logObject.description = _self.processJiraDescription(logObject.originalDescription, issueName);
+                logObject.originalDuration = logObject.duration
 
                 if (_self.jiraMerge) {
                   let logIndex = _self.logs.findIndex(
@@ -439,6 +462,7 @@ export default {
                   if (logIndex !== -1) {
                     _self.logs[logIndex].duration =
                       _self.logs[logIndex].duration + logObject.duration;
+                    _self.logs[logIndex].originalDuration = _self.logs[logIndex].duration;
                   } else {
                     _self.logs.push(logObject);
                   }
@@ -453,6 +477,8 @@ export default {
                 logObject.isSynced = false;
                 logObject.issue = 'NO ID';
                 logObject.checked = '';
+                logObject.originalDescription = logObject.description;
+                logObject.originalDuration = logObject.duration
                 _self.logs.push(logObject);
               });
           });
@@ -472,7 +498,7 @@ export default {
           }
         });
     },
-    totalDuration (synced = false) {
+    totalDuration (synced = false, original = true) {
       let _self = this;
       if (!_self.logs.length) {
         return _self.blockFetch ? 'Loading...' : 'No entries!';
@@ -480,9 +506,10 @@ export default {
 
       let totalDuration = 0;
       _self.logs.forEach(function (log) {
-        if (log.duration && log.duration > 0) {
+        let duration = original ? log.originalDuration : log.duration;
+        if (duration && duration > 0) {
           if (!synced || log.isSynced) {
-            totalDuration += log.duration;
+            totalDuration += duration;
           }
         }
       });

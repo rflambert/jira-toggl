@@ -33,7 +33,9 @@
           <md-checkbox v-model="jiraIssueInDescription">Parse Jira issue from description</md-checkbox>
           <md-checkbox v-model="worklogWihtoutDescription">Don't include Issue ID in worklog</md-checkbox><br>
           <md-checkbox v-model="worklogDescriptionSplit">Split worklog description from first occurrence of:</md-checkbox>
-          <input v-model="stringSplit" placeholder="Searched string to split" style="contain: content;">
+          <input v-model="stringSplit" placeholder="Searched string to split" style="contain: content;"><br>
+          <md-checkbox v-model="allowEditingDescription">Allow editing description</md-checkbox>
+          <md-checkbox v-model="allowEditingDuration">Allow editing duration</md-checkbox>
           <br><br>
           <h3>Extra Options</h3>
           <md-checkbox v-model="saveDates">Save dates (Persistent start and end dates)</md-checkbox><br>
@@ -78,7 +80,9 @@ export default {
       showSnackbar: false,
       jiraPlugin: '{jiraUrl}/',
       weekdayMonday: false,
-      saveDates: false
+      saveDates: false,
+      allowEditingDescription: false,
+      allowEditingDuration: false
     };
   },
   created () {
@@ -97,7 +101,9 @@ export default {
       togglApiToken: '',
       jiraPlugin: '{jiraUrl}/',
       weekdayMonday: false,
-      saveDates: false
+      saveDates: false,
+      allowEditingDescription: false,
+      allowEditingDuration: false
     }).then((setting) => {
       _self.jiraUrl = setting.jiraUrl;
       _self.jiraEmail = setting.jiraEmail;
@@ -112,6 +118,8 @@ export default {
       _self.jiraPlugin = setting.jiraPlugin;
       _self.weekdayMonday = setting.weekdayMonday;
       _self.saveDates = setting.saveDates;
+      _self.allowEditingDescription = setting.allowEditingDescription;
+      _self.allowEditingDuration = setting.allowEditingDuration;
     });
   },
   methods: {
@@ -132,7 +140,9 @@ export default {
         togglApiToken: _self.togglApiToken,
         jiraPlugin: _self.jiraPlugin,
         weekdayMonday: _self.weekdayMonday,
-        saveDates: _self.saveDates
+        saveDates: _self.saveDates,
+        allowEditingDescription: _self.allowEditingDescription,
+        allowEditingDuration: _self.allowEditingDuration
       }).then(() => {
         _self.isSaving = false;
         _self.showSnackbar = true;
