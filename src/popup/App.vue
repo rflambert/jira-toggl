@@ -207,6 +207,8 @@ export default {
         saveDates: false,
         allowEditingDescription: false,
         allowEditingDuration: false,
+        roundDurations: false,
+        roundDurationsInterval: 0
       })
       .then((setting) => {
         _self.jiraUrl = setting.jiraUrl;
@@ -228,6 +230,8 @@ export default {
         }
         _self.allowEditingDescription = setting.allowEditingDescription;
         _self.allowEditingDuration = setting.allowEditingDuration;
+        _self.roundDurations = setting.roundDurations;
+        _self.roundDurationsInterval = setting.roundDurationsInterval;
         _self.$material.locale.firstDayOfAWeek = _self.weekdayMonday;
       });
   },
@@ -510,10 +514,16 @@ export default {
     },
     /** Any common manipulation on all toggle logs */
     preProcessTogglLog(log) {
+      let _self = this;
       log.isSynced = false;
       log.checked = '';
       log.originalDescription = log.description;
       log.originalDuration = log.duration;
+      if (_self.roundDurations && _self.allowEditingDuration) {
+        // round to the nearest given value
+        let intervalSeconds = _self.roundDurationsInterval * 60;
+        log.duration = Math.round(log.duration / (intervalSeconds)) * intervalSeconds;
+      }
     },
     totalDuration (synced = false, original = true) {
       let _self = this;

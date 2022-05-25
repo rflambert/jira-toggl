@@ -35,7 +35,9 @@
           <md-checkbox v-model="worklogDescriptionSplit">Split worklog description from first occurrence of:</md-checkbox>
           <input v-model="stringSplit" placeholder="Searched string to split" style="contain: content;"><br>
           <md-checkbox v-model="allowEditingDescription">Allow editing description</md-checkbox>
-          <md-checkbox v-model="allowEditingDuration">Allow editing duration</md-checkbox>
+          <md-checkbox v-model="allowEditingDuration">Allow editing duration</md-checkbox><br>
+          <md-checkbox :disabled="!allowEditingDuration" v-model="roundDurations">Round duration to nearest minutes:</md-checkbox>
+          <input :disabled="!allowEditingDuration" v-model="roundDurationsInterval" placeholder="minutes" type="number" style="contain: content;">
           <br><br>
           <h3>Extra Options</h3>
           <md-checkbox v-model="saveDates">Save dates (Persistent start and end dates)</md-checkbox><br>
@@ -82,7 +84,9 @@ export default {
       weekdayMonday: false,
       saveDates: false,
       allowEditingDescription: false,
-      allowEditingDuration: false
+      allowEditingDuration: false,
+      roundDurations: false,
+      roundDurationsInterval: 0
     };
   },
   created () {
@@ -103,7 +107,9 @@ export default {
       weekdayMonday: false,
       saveDates: false,
       allowEditingDescription: false,
-      allowEditingDuration: false
+      allowEditingDuration: false,
+      roundDurations: false,
+      roundDurationsInterval: 0
     }).then((setting) => {
       _self.jiraUrl = setting.jiraUrl;
       _self.jiraEmail = setting.jiraEmail;
@@ -120,6 +126,8 @@ export default {
       _self.saveDates = setting.saveDates;
       _self.allowEditingDescription = setting.allowEditingDescription;
       _self.allowEditingDuration = setting.allowEditingDuration;
+      _self.roundDurations = setting.roundDurations;
+      _self.roundDurationsInterval = setting.roundDurationsInterval;
     });
   },
   methods: {
@@ -142,7 +150,9 @@ export default {
         weekdayMonday: _self.weekdayMonday,
         saveDates: _self.saveDates,
         allowEditingDescription: _self.allowEditingDescription,
-        allowEditingDuration: _self.allowEditingDuration
+        allowEditingDuration: _self.allowEditingDuration,
+        roundDurations: _self.roundDurations,
+        roundDurationsInterval: _self.roundDurationsInterval
       }).then(() => {
         _self.isSaving = false;
         _self.showSnackbar = true;
