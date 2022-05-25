@@ -62,7 +62,7 @@
               <md-table-head>Logged</md-table-head>
             </md-table-row>
 
-            <md-table-row v-for="log in logs" :key="log.id">
+            <md-table-row v-for="log in displayLogs" :key="log.id">
               <md-table-cell class="no-wrap">
                 <md-checkbox v-if=" log.issue === 'NO ID' || log.isSynced || log.duration < 60" v-model="checkedLogs" disabled :value="log" />
                 <md-checkbox v-else v-model="checkedLogs" :value="log" />
@@ -230,6 +230,15 @@ export default {
         _self.allowEditingDuration = setting.allowEditingDuration;
         _self.$material.locale.firstDayOfAWeek = _self.weekdayMonday;
       });
+  },
+  computed: {
+    displayLogs() {
+      if (this.jiraMerge) {
+         // Ensure entries are ordered the same way as in Toggl
+         return this.logs.sort((log1, log2) => log2.latestStart.getTime() - log1.latestStart.getTime());
+      }
+      return this.logs;
+    },
   },
   methods: {
     refreshEntries () {
@@ -442,43 +451,44 @@ export default {
         })
         .then(function (entries) {
           _self.blockFetch = false;
-          entries.data.reverse();
+
+          // Merge entries with same description if that option is selected.
+          let mergedIssues = [];
           entries.data.forEach(function (log) {
+            if (_self.jiraMerge) {
+              let logIndex = mergedIssues.findIndex((i) => i.description === log.description);
+              if (logIndex !== -1) {
+                mergedIssues[logIndex].duration = mergedIssues[logIndex].duration + log.duration;
+                let thisStart = new Date(log.start);
+                if (thisStart.getTime() > mergedIssues[logIndex].latestStart.getTime()) {
+                  mergedIssues[logIndex].latestStart = thisStart;
+                }
+              } else {
+                log.latestStart = new Date(log.start);
+                mergedIssues.push(log);
+              }
+            } else {
+              mergedIssues.push(log);
+            }
+          });
+
+          // Parse issue, check if already logged
+          mergedIssues.forEach(function (log) {
+            _self.preProcessTogglLog(log);
             _self
               .getIssue(log)
               .then(function (issueName) {
                 let logObject = log;
-                logObject.isSynced = false;
                 logObject.issue = issueName;
-                logObject.checked = '';
-                logObject.originalDescription = logObject.description;
                 logObject.description = _self.processJiraDescription(logObject.originalDescription, issueName);
-                logObject.originalDuration = logObject.duration
+                _self.logs.push(logObject);
 
-                if (_self.jiraMerge) {
-                  let logIndex = _self.logs.findIndex(
-                    (i) => i.description === log.description && i.issue === issueName
-                  );
-                  if (logIndex !== -1) {
-                    _self.logs[logIndex].duration =
-                      _self.logs[logIndex].duration + logObject.duration;
-                    _self.logs[logIndex].originalDuration = _self.logs[logIndex].duration;
-                  } else {
-                    _self.logs.push(logObject);
-                  }
-                } else {
-                  _self.logs.push(logObject);
-                }
                 _self.checkIfAlreadyLogged(log);
               })
               .catch(function (log) {
                 // There is no ID for the entry but we still need to print it out to the user
                 let logObject = log;
-                logObject.isSynced = false;
                 logObject.issue = 'NO ID';
-                logObject.checked = '';
-                logObject.originalDescription = logObject.description;
-                logObject.originalDuration = logObject.duration
                 _self.logs.push(logObject);
               });
           });
@@ -497,6 +507,13 @@ export default {
                 : error.response;
           }
         });
+    },
+    /** Any common manipulation on all toggle logs */
+    preProcessTogglLog(log) {
+      log.isSynced = false;
+      log.checked = '';
+      log.originalDescription = log.description;
+      log.originalDuration = log.duration;
     },
     totalDuration (synced = false, original = true) {
       let _self = this;
