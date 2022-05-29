@@ -35,10 +35,35 @@
           <md-checkbox v-model="worklogDescriptionSplit">Split worklog description from first occurrence of:</md-checkbox>
           <input v-model="stringSplit" placeholder="Searched string to split" style="contain: content;"><br>
           <md-checkbox v-model="allowEditingDescription">Allow editing description</md-checkbox>
-          <md-checkbox v-model="allowEditingDuration">Allow editing duration</md-checkbox><br>
+          <md-checkbox v-model="allowEditingDuration">Allow editing duration</md-checkbox>
           <md-checkbox :disabled="!allowEditingDuration" v-model="roundDurations">Round duration to nearest minutes:</md-checkbox>
-          <input :disabled="!allowEditingDuration" v-model="roundDurationsInterval" placeholder="minutes" type="number" style="contain: content;">
-          <br><br>
+          <input :disabled="!allowEditingDuration" v-model="roundDurationsInterval" placeholder="minutes" type="number" style="contain: content;"><br>
+          <md-checkbox v-model="autoReplaceDescriptions">Auto-modify descriptions</md-checkbox><br>
+          <md-table v-if="autoReplaceDescriptions">
+            <md-table-row>
+              <md-table-head>Search pattern/regex</md-table-head>
+              <md-table-head>Replacement</md-table-head>
+            </md-table-row>
+            <md-table-row v-for="pattern in autoReplaceList" :key="pattern[0]">
+              <md-table-cell>{{pattern[0]}}</md-table-cell>
+              <md-table-cell>{{pattern[1]}}</md-table-cell>
+              <md-table-cell>
+                <md-button class="md-raised md-accent" @click="deleteItem(pattern)">
+                  <span>Delete</span>
+                </md-button>
+              </md-table-cell>
+            </md-table-row>
+            <md-table-row>
+              <md-table-cell><input type="text" v-model="newReplacePattern.pattern"></md-table-cell>
+              <md-table-cell><input type="text" v-model="newReplacePattern.replacement"></md-table-cell>
+              <md-table-cell>
+                <md-button class="md-raised md-accent" @click="addItem">
+                  <span>Add</span>
+                </md-button>
+              </md-table-cell>
+            </md-table-row>
+          </md-table>
+          <br>
           <h3>Extra Options</h3>
           <md-checkbox v-model="saveDates">Save dates (Persistent start and end dates)</md-checkbox><br>
           <md-checkbox v-model="weekdayMonday">Start week on monday</md-checkbox><br>
@@ -86,7 +111,10 @@ export default {
       allowEditingDescription: false,
       allowEditingDuration: false,
       roundDurations: false,
-      roundDurationsInterval: 0
+      roundDurationsInterval: 0,
+      autoReplaceDescriptions: true,
+      autoReplaceList: [],
+      newReplacePattern: {pattern: "", replacement: ""}
     };
   },
   created () {
@@ -109,7 +137,9 @@ export default {
       allowEditingDescription: false,
       allowEditingDuration: false,
       roundDurations: false,
-      roundDurationsInterval: 0
+      roundDurationsInterval: 0,
+      autoReplaceDescriptions: false,
+      autoReplaceList: []
     }).then((setting) => {
       _self.jiraUrl = setting.jiraUrl;
       _self.jiraEmail = setting.jiraEmail;
@@ -128,6 +158,8 @@ export default {
       _self.allowEditingDuration = setting.allowEditingDuration;
       _self.roundDurations = setting.roundDurations;
       _self.roundDurationsInterval = setting.roundDurationsInterval;
+      _self.autoReplaceDescriptions = setting.autoReplaceDescriptions;
+      _self.autoReplaceList = setting.autoReplaceList;
     });
   },
   methods: {
@@ -152,12 +184,25 @@ export default {
         allowEditingDescription: _self.allowEditingDescription,
         allowEditingDuration: _self.allowEditingDuration,
         roundDurations: _self.roundDurations,
-        roundDurationsInterval: _self.roundDurationsInterval
+        roundDurationsInterval: _self.roundDurationsInterval,
+        autoReplaceDescriptions: _self.autoReplaceDescriptions,
+        autoReplaceList: _self.autoReplaceList
       }).then(() => {
         _self.isSaving = false;
         _self.showSnackbar = true;
       });
-    }
+    },
+    deleteItem: function(patternToDelete) {
+      this.autoReplaceList = this.autoReplaceList.filter(value => value[0] !== patternToDelete[0] || value[1] !== patternToDelete[1]);
+    },
+    addItem: function(e) {
+      let _self = this;
+      if (_self.newReplacePattern.pattern.length && _self.newReplacePattern.replacement.length) {
+        let newPattern = [_self.newReplacePattern.pattern, _self.newReplacePattern.replacement];
+        _self.autoReplaceList.push(newPattern);
+        _self.newReplacePattern = {pattern: "", replacement: ""}
+      }
+    },
   }
 };
 </script>

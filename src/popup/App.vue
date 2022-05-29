@@ -208,7 +208,9 @@ export default {
         allowEditingDescription: false,
         allowEditingDuration: false,
         roundDurations: false,
-        roundDurationsInterval: 0
+        roundDurationsInterval: 0,
+        autoReplaceDescriptions: false,
+        autoReplaceList: []
       })
       .then((setting) => {
         _self.jiraUrl = setting.jiraUrl;
@@ -232,6 +234,8 @@ export default {
         _self.allowEditingDuration = setting.allowEditingDuration;
         _self.roundDurations = setting.roundDurations;
         _self.roundDurationsInterval = setting.roundDurationsInterval;
+        _self.autoReplaceDescriptions = setting.autoReplaceDescriptions;
+        _self.autoReplaceList = setting.autoReplaceList;
         _self.$material.locale.firstDayOfAWeek = _self.weekdayMonday;
       });
   },
@@ -484,7 +488,7 @@ export default {
               .then(function (issueName) {
                 let logObject = log;
                 logObject.issue = issueName;
-                logObject.description = _self.processJiraDescription(logObject.originalDescription, issueName);
+                logObject.description = _self.processJiraDescription(logObject.description, issueName);
                 _self.logs.push(logObject);
 
                 _self.checkIfAlreadyLogged(log);
@@ -523,6 +527,21 @@ export default {
         // round to the nearest given value
         let intervalSeconds = _self.roundDurationsInterval * 60;
         log.duration = Math.round(log.duration / (intervalSeconds)) * intervalSeconds;
+      }
+      if (_self.autoReplaceDescriptions) {
+        _self.autoReplaceList.forEach(patternAndreplacement => {
+          let match = log.description.match(new RegExp(patternAndreplacement[0]));
+          if (match) {
+            let newDescription = patternAndreplacement[1];
+            match.forEach(function (value, i) {
+              // '0' is the match, then groups come after that 1, 2, etc
+              if (i !== 0) {
+                newDescription = newDescription.replace("$" + i, value);
+              }
+            })
+            log.description = newDescription;
+          }
+        });
       }
     },
     totalDuration (synced = false, original = true) {
