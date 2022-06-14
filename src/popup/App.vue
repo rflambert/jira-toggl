@@ -52,7 +52,7 @@
           <md-table>
             <md-table-row>
               <md-table-head>
-                <md-checkbox v-model="syncAllLogs" class="custom-checkbox" @change="doSyncAllLogs" />
+                <md-checkbox :disabled="isRefreshingEntries || isSyncing" v-model="syncAllLogs" class="custom-checkbox" @change="doSyncAllLogs" />
               </md-table-head>
               <md-table-head>Issue</md-table-head>
               <md-table-head>Description</md-table-head>
@@ -64,11 +64,10 @@
 
             <md-table-row v-for="log in displayLogs" :key="log.id">
               <md-table-cell class="no-wrap">
-                <md-checkbox v-if=" log.issue === 'NO ID' || log.isSynced || log.duration < 60" v-model="checkedLogs" disabled :value="log" />
-                <md-checkbox v-else v-model="checkedLogs" :value="log" />
+                <md-checkbox :disabled="!logCanSync(log) || isRefreshingEntries || isSyncing" v-model="checkedLogs" :value="log" />
               </md-table-cell>
               <md-table-cell class="no-wrap">
-                <a v-if="log.issue != 'NO ID'" :href="jiraUrl + '/browse/' + log.issue" target="_blank">{{ log.issue }}</a><a v-else>{{ log.issue }}</a>
+                <a v-if="log.issue != 'NO ID'" :href="jiraUrl + '/browse/' + log.issue" target="_blank">{{ log.issue }}</a><a v-else class="timeRed">{{ log.issue }}</a>
               </md-table-cell>
               <md-table-cell v-if="!allowEditingDescription">{{ log.originalDescription }}</md-table-cell>
               <md-table-cell v-if="allowEditingDescription">
@@ -118,12 +117,9 @@
         </div>
       </div>
       <div class="button__container">
-        <md-button v-if="checkedLogs.length" class="md-raised md-accent" @click="syncToJira">
-          <span v-show="!isSaving">Log work</span>
-          <span v-show="isSaving">Logging...</span>
-        </md-button>
-        <md-button v-else disabled class="md-raised md-accent" @click="syncToJira">
-          <span>Log work</span>
+        <md-button :disabled="isRefreshingEntries || isSyncing || !checkedLogs.length" class="md-raised md-accent" 
+          @click="syncToJira">
+          <span>{{ isRefreshingEntries ? "Please wait..." : (isSyncing ? "Logging..." : "Log work") }}</span>
         </md-button>
       </div>
       <md-snackbar v-if="!errorMessage" :md-active.sync="showSnackbar" md-persistent>
@@ -162,7 +158,8 @@ export default {
       clockworkEnabled: false,
       stringSplit: ':',
       togglApiToken: '',
-      isSaving: false,
+      isRefreshingEntries: true,
+      isSyncing: false,
       showSnackbar: false,
       blockFetch: false,
       weekdayMonday: true,
@@ -249,13 +246,16 @@ export default {
     },
   },
   methods: {
-    refreshEntries () {
+    async refreshEntries () {
+      const _self = this;
+      _self.isRefreshingEntries = true;
       if (this.saveDates) {
-        this.saveActualDates();
+        await this.saveActualDates();
       }
       this.checkedLogs = [];
       this.logs = [];
-      this.fetchEntries();
+      await this.fetchEntries();
+      _self.isRefreshingEntries = false;
     },
     processJiraDescription (description, issue) {
       const _self = this;
@@ -274,42 +274,49 @@ export default {
 
       return newDescription;
     },
+    logCanSync (log) {
+      return log.issue !== 'NO ID' && !log.isSynced && log.duration >= 60;
+    },
     async syncToJira () {
       const _self = this;
+      _self.isSyncing = true;
       const headers = {
         'X-Atlassian-Token': 'no-check', 'User-Agent': ''
       };
       const awaitingIssues = {};
       for (let log of this.checkedLogs) {
-        if (log.issue in awaitingIssues) {
-          await awaitingIssues[log.issue];
+        if (_self.logCanSync(log)) {
+          if (log.issue in awaitingIssues) {
+            await awaitingIssues[log.issue];
+          }
+          const promise = axios({
+            method: 'post',
+            url:
+              _self.jiraUrl + '/rest/api/latest/issue/' + log.issue + '/worklog',
+            data: {
+              timeSpentSeconds: log.duration,
+              comment: log.description,
+              started: _self.toJiraDateTime(log.start)
+            },
+            headers: headers
+          })
+            .then(async function (response) {
+              await _self.checkIfAlreadyLogged(log)
+            })
+            .catch(function (error) {
+              _self.errorMessage = error;
+            })
+            .finally(function () {
+              delete awaitingIssues[log.issue];
+            });
+          awaitingIssues[log.issue] = promise;
         }
-        const promise = axios({
-          method: 'post',
-          url:
-            _self.jiraUrl + '/rest/api/latest/issue/' + log.issue + '/worklog',
-          data: {
-            timeSpentSeconds: log.duration,
-            comment: log.description,
-            started: _self.toJiraDateTime(log.start)
-          },
-          headers: headers
-        })
-          .then(function (response) {
-            _self.isSaving = false;
-            _self.showSnackbar = true;
-            _self.checkIfAlreadyLogged(log);
-            _self.checkedLogs = [];
-            _self.syncAllLogs = false;
-          })
-          .catch(function (error) {
-            _self.errorMessage = error;
-          })
-          .finally(function () {
-            delete awaitingIssues[log.issue];
-          });
-        awaitingIssues[log.issue] = promise;
       }
+      await Promise.all(Object.values(awaitingIssues))
+      _self.isSyncing = false;
+      _self.showSnackbar = true;
+      _self.checkedLogs = [];
+      _self.syncAllLogs = false;
     },
     toJiraDateTime (date) {
       let parsedDate = Date.parse(date);
@@ -328,7 +335,7 @@ export default {
       let _self = this;
       if (this.syncAllLogs) {
         _self.logs.forEach(function (log) {
-          if (log.issue !== 'NO ID' && !log.isSynced) {
+          if (_self.logCanSync(log)) {
             _self.checkedLogs.push(log);
           }
         });
@@ -365,9 +372,9 @@ export default {
         return new Date(worklog.started).toISOString() === new Date(log.start).toISOString();
       }
     },
-    checkIfAlreadyLogged (log) {
+    async checkIfAlreadyLogged (log) {
       const _self = this;
-      axios
+      await axios
         .get(_self.jiraUrl + '/rest/api/latest/issue/' + log.issue + '/worklog')
         .then(function (response) {
           let worklogs = response.data.worklogs;
@@ -387,9 +394,9 @@ export default {
     },
     matchIssueId (name) {
       if (this.allowNumbersInId) {
-        return name.match(/^[A-Z][A-Z,0-9]*-[0-9]*/);
+        return name.match(/^([a-zA-Z][a-zA-Z0-9]*-[0-9]+)/);
       } else {
-        return name.match(/^[A-Z]*-[0-9]*/);
+        return name.match(/^([a-zA-Z][a-zA-Z]*-[0-9]+)/)
       }
     },
     getIssue (log) {
@@ -398,7 +405,7 @@ export default {
         if (_self.jiraIssueInDescription && log.description != null) {
           const parsedIssue = _self.matchIssueId(log.description.trim());
           if (parsedIssue) {
-            resolve(parsedIssue[0]);
+            resolve(parsedIssue[0]?.toUpperCase());
           }
         } else if (log.description == null) {
           log.description = ''; // Set empty string (not null), to avoid reference null problems
@@ -414,7 +421,7 @@ export default {
             .then(function (issue) {
               const parsedIssue = _self.matchIssueId(issue.data.name);
               if (parsedIssue) {
-                resolve(parsedIssue[0]);
+                resolve(parsedIssue[0]?.toUpperCase);
               } else {
                 reject(log);
               }
@@ -424,7 +431,7 @@ export default {
         }
       });
     },
-    fetchEntries () {
+    async fetchEntries () {
       let _self = this;
       const offset = new Date().getTimezoneOffset();
       const sign = offset <= 0 ? '+' : '-';
@@ -447,7 +454,7 @@ export default {
       }
 
       _self.blockFetch = true;
-      axios
+      await axios
         .get('https://api.track.toggl.com/api/v9/me/time_entries', {
           headers: {
             Authorization: 'Basic ' + btoa(_self.togglApiToken + ':api_token')
@@ -457,7 +464,7 @@ export default {
             end_date: endDate
           }
         })
-        .then(function (entries) {
+        .then(async function (entries) {
           _self.blockFetch = false;
 
           // Merge entries with same description if that option is selected.
@@ -480,18 +487,19 @@ export default {
             }
           });
 
+
           // Parse issue, check if already logged
-          mergedIssues.forEach(function (log) {
+          await Promise.all(mergedIssues.map(async function (log) {
             _self.preProcessTogglLog(log);
-            _self
+            await _self
               .getIssue(log)
-              .then(function (issueName) {
+              .then(async function (issueName) {
                 let logObject = log;
                 logObject.issue = issueName;
                 logObject.description = _self.processJiraDescription(logObject.description, issueName);
                 _self.logs.push(logObject);
 
-                _self.checkIfAlreadyLogged(log);
+                await _self.checkIfAlreadyLogged(log);
               })
               .catch(function (log) {
                 // There is no ID for the entry but we still need to print it out to the user
@@ -499,7 +507,7 @@ export default {
                 logObject.issue = 'NO ID';
                 _self.logs.push(logObject);
               });
-          });
+          }));
         })
         .catch(function (error) {
           _self.blockFetch = false;
@@ -580,12 +588,10 @@ export default {
       let newEndDate = moment(this.endDate).add(ndays, 'days');
       this.startDate = new Date(newStartDate.startOf('day'));
       this.endDate = new Date(newEndDate.startOf('day'));
-      this.refreshEntries();
     },
     moveToday () {
       this.startDate = new Date(moment().startOf('day'));
       this.endDate = this.startDate;
-      this.refreshEntries();
     },
     clockworkUrl () {
       let startDate = moment(this.startDate)
@@ -606,15 +612,12 @@ export default {
       const d = new Date(date).getDate();
       return y.toString() + '-' + m.toString() + '-' + d.toString();
     },
-    saveActualDates () {
+    async saveActualDates () {
       const _self = this;
-      _self.isSaving = true;
       browser.storage.sync.set({
         startDate: this.formatDateToPicker(_self.startDate),
         endDate: this.formatDateToPicker(_self.endDate)
-      }).then(() => {
-        _self.isSaving = false;
-      });
+      })
     }
   }
 };
@@ -697,7 +700,7 @@ img {
 }
 
 .timeRed {
-  color: var(--md-theme-default-accent, rgb(255, 0, 0));
+  color: var(--md-theme-default-accent, rgb(255, 0, 0)) !important;
   font-weight: bold;
 }
 
