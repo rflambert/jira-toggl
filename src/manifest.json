@@ -1,5 +1,5 @@
 {
-  "name": "Jira Toggl",
+  "name": "Jira Toggl MD",
   "description": "A web extension for syncing Toggl timelog entries to your Jira Software worklog",
   "version": null,
   "permissions": [
@@ -9,7 +9,7 @@
   ],
   "applications": {
     "gecko": {
-      "id": "{b8f6741b-8299-451d-ab45-6d4838409f07}"
+      "id": "{5c665328-f549-4cca-9f6b-cc149720aea6}"
     }
   },
   "content_security_policy": "script-src 'self' 'unsafe-eval'; object-src 'self'",
