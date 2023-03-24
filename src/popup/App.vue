@@ -440,14 +440,16 @@ export default {
 
       let startDate = moment(this.startDate)
         .startOf('day')
+        .add(offset, 'minutes')
         .utc(true)
-        .toISOString(true)
-        .replace('+00:00', timezone);
+        .toISOString(true);
+        // .replace('+00:00', timezone);
       let endDate = moment(this.endDate)
         .endOf('day')
+        .add(offset, 'minutes')
         .utc(true)
-        .toISOString(true)
-        .replace('+00:00', timezone);
+        .toISOString(true);
+        // .replace('+00:00', timezone);
 
       if (_self.blockFetch) {
         return;
